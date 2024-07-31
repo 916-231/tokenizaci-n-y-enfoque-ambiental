@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract EcoBuilding is ERC20, Ownable {
+    struct Building {
+        uint256 id;
+        uint256 waterSaved;
+        uint256 energyProduced;
+        bool active;
+    }
+
+    mapping(uint256 => Building) public buildings;
+    uint256 public buildingCount;
+
+    event BuildingAdded(uint256 indexed buildingId);
+    event WaterSaved(uint256 indexed buildingId, uint256 amount);
+    event EnergyProduced(uint256 indexed buildingId, uint256 amount);
+
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) {
+        _mint(msg.sender, 1000000 * 10**decimals());
+    }
+
+    function addBuilding() external onlyOwner {
+        buildingCount++;
+        buildings[buildingCount] = Building(buildingCount, 0, 0, true);
+        emit BuildingAdded(buildingCount);
+    }
+
+    function reportWaterSaved(uint256 _buildingId, uint256 _amount) external onlyOwner {
+        require(buildings[_buildingId].active, "Building not active");
+        buildings[_buildingId].waterSaved += _amount;
+        emit WaterSaved(_buildingId, _amount);
+    }
+
+    function reportEnergyProduced(uint256 _buildingId, uint256 _amount) external onlyOwner {
+        require(buildings[_buildingId].active, "Building not active");
+        buildings[_buildingId].energyProduced += _amount;
+        emit EnergyProduced(_buildingId, _amount);
+    }
+
+    function mintRewards(address _to, uint256 _amount) external onlyOwner {
+        _mint(_to, _amount);
+    }
+}

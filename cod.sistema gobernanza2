@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract EnvironmentalProject {
+    struct Building {
+        uint256 recycledWaterUsage; // Usage of recycled water in liters
+        uint256 energyCollected; // Energy collected from solar windows in kWh
+        address owner;
+        bool isVoting; // Flag to indicate if a voting is in progress
+        mapping(address => bool) hasVoted; // Track if an address has voted
+        uint256 yesVotes; // Total YES votes
+        uint256 noVotes; // Total NO votes
+    }
+    
+    mapping(address => Building) public buildings;
+    uint256 public totalBuildings;
+    
+    // Event to track building creation
+    event BuildingCreated(address indexed owner, uint256 recycledWaterUsage, uint256 energyCollected);
+    
+    // Event to track voting results
+    event VoteCasted(address indexed voter, string vote);
+    
+    // Function to create a new building with specified recycled water usage and energy collected
+    function createBuilding(uint256 _recycledWaterUsage, uint256 _energyCollected) public {
+        Building storage newBuilding = buildings[msg.sender];
+        newBuilding.recycledWaterUsage = _recycledWaterUsage;
+        newBuilding.energyCollected = _energyCollected;
+        newBuilding.owner = msg.sender;
+        totalBuildings++;
+        
+        emit BuildingCreated(msg.sender, _recycledWaterUsage, _energyCollected);
+    }
+    
+    // Function to start a voting process
+    function startVoting() public {
+        Building storage building = buildings[msg.sender];
+        require(building.owner == msg.sender, "Only the building owner can start a vote");
+        
+        building.isVoting = true;
+        building.yesVotes = 0;
+        building.noVotes = 0;
+    }
+    
+    // Function to vote in the ongoing voting process
+    function vote(string memory _vote) public {
+        Building storage building = buildings[msg.sender];
+        require(building.isVoting, "Voting is not currently active");
+        require(building.hasVoted[msg.sender] == false, "You have already voted");
+        
+        if (keccak256(abi.encodePacked(_vote)) == keccak256(abi.encodePacked("yes"))) {
+            building.yesVotes++;
+        } else if (keccak256(abi.encodePacked(_vote)) == keccak256(abi.encodePacked("no"))) {
+            building.noVotes++;
+        }
+        
+        building.hasVoted[msg.sender] = true;
+        emit VoteCasted(msg.sender, _vote);
+    }
+}
+

@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+
+contract EcoBuildingBEP20 is ERC20, Ownable, ChainlinkClient {
+    using Counters for Counters.Counter;
+    using Chainlink for Chainlink.Request;
+
+    struct Building {
+        uint256 id;
+        uint256 waterSaved;
+        uint256 energyProduced;
+        bool active;
+    }
+
+    struct Proposal {
+        uint256 id;
+        string description;
+        uint256 forVotes;
+        uint256 againstVotes;
+        uint256 endTime;
+        bool executed;
+    }
+
+    mapping(uint256 => Building) public buildings;
+    Counters.Counter private _buildingIds;
+    
+    mapping(uint256 => Proposal) public proposals;
+    Counters.Counter private _proposalIds;
+
+    uint256 public constant VOTING_PERIOD = 3 days;
+    
+    mapping(address => mapping(uint256 => bool)) public hasVoted;
+
+    // Chainlink variables
+    address private oracle;
+    bytes32 private jobId;
+    uint256 private fee;
+
+    event BuildingAdded(uint256 indexed buildingId);
+    event WaterSaved(uint256 indexed buildingId, uint256 amount);
+    event EnergyProduced(uint256 indexed buildingId, uint256 amount);
+    event ProposalCreated(uint256 indexed proposalId, string description);
+    event Voted(uint256 indexed proposalId, address voter, bool support);
+    event ProposalExecuted(uint256 indexed proposalId);
+    event DataRequested(bytes32 indexed requestId, uint256 buildingId);
+    event DataReceived(bytes32 indexed requestId, uint256 buildingId, uint256 waterSaved, uint256 energyProduced);
+
+    constructor(string memory name, string memory symbol, address _oracle, bytes32 _jobId, uint256 _fee) ERC20(name, symbol) {
+        _mint(msg.sender, 1000000 * 10**decimals());
+        
+        // Initialize Chainlink
+        setPublicChainlinkToken();
+        oracle = _oracle;
+        jobId = _jobId;
+        fee = _fee;
+    }
+
+    function addBuilding() external onlyOwner {
+        _buildingIds.increment();
+        uint256 newBuildingId = _buildingIds.current();
+        buildings[newBuildingId] = Building(newBuildingId, 0, 0, true);
+        emit BuildingAdded(newBuildingId);
+    }
+
+    function requestBuildingData(uint256 _buildingId) public returns (bytes32 requestId) {
+        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfill.selector);
+        
+        // Set the URL to perform the GET request on
+        request.add("get", "http://example.com/api/building-data");
+        request.add("path", "data,waterSaved");
+        request.addUint("buildingId", _buildingId);
+        
+        // Sends the request
+        bytes32 _requestId = sendChainlinkRequestTo(oracle, request, fee);
+        emit DataRequested(_requestId, _buildingId);
+        return _requestId;
+    }
+
+    function fulfill(bytes32 _requestId, uint256 _waterSaved, uint256 _energyProduced) public recordChainlinkFulfillment(_requestId) {
+        uint256 buildingId = _buildingIds.current();
+        buildings[buildingId].waterSaved = _waterSaved;
+        buildings[buildingId].energyProduced = _energyProduced;
+        emit DataReceived(_requestId, buildingId, _waterSaved, _energyProduced);
+    }
+
+    function mintRewards(address _to, uint256 _amount) external onlyOwner {
+        _mint(_to, _amount);
+    }
+
+    // Governance functions
+    function createProposal(string memory _description) external {
+        require(balanceOf(msg.sender) > 0, "Must hold tokens to create proposal");
+        _proposalIds.increment();
+        uint256 newProposalId = _proposalIds.current();
+        proposals[newProposalId] = Proposal({
+            id: newProposalId,
+            description: _description,
+            forVotes: 0,
+            againstVotes: 0,
+            endTime: block.timestamp + VOTING_PERIOD,
+            executed: false
+        });
+        emit ProposalCreated(newProposalId, _description);
+    }
+
+    function vote(uint256 _proposalId, bool _support) external {
+        Proposal storage proposal = proposals[_proposalId];
+        require(block.timestamp < proposal.endTime, "Voting period has ended");
+        require(!hasVoted[msg.sender][_proposalId], "Already voted");
+        require(balanceOf(msg.sender) > 0, "Must hold tokens to vote");
+
+        hasVoted[msg.sender][_proposalId] = true;
+        if (_support) {
+            proposal.forVotes += balanceOf(msg.sender);
+        } else {
+            proposal.againstVotes += balanceOf(msg.sender);
+        }
+
+        emit Voted(_proposalId, msg.sender, _support);
+    }
+
+    function executeProposal(uint256 _proposalId) external onlyOwner {
+        Proposal storage proposal = proposals[_proposalId];
+        require(block.timestamp >= proposal.endTime, "Voting period not ended");
+        require(!proposal.executed, "Proposal already executed");
+
+        proposal.executed = true;
+        
+        if (proposal.forVotes > proposal.againstVotes) {
+            // Implement the logic to execute the proposal
+            // This could involve calling specific functions or changing contract parameters
+        }
+
+        emit ProposalExecuted(_proposalId);
+    }
+
+    function withdrawLink() external onlyOwner {
+        LinkTokenInterface link = LinkTokenInterface(chainlinkTokenAddress());
+        require(link.transfer(msg.sender, link.balanceOf(address(this))), "Unable to transfer");
+    }
+}

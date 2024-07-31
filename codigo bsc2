@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract EnvironmentalProject {
+    struct Building {
+        uint256 recycledWaterUsage; // Usage of recycled water in liters
+        uint256 energyCollected; // Energy collected from solar windows in kWh
+        address owner;
+    }
+    
+    mapping(address => Building) public buildings;
+    uint256 public totalBuildings;
+    
+    // Event to track building creation
+    event BuildingCreated(address indexed owner, uint256 recycledWaterUsage, uint256 energyCollected);
+    
+    // Function to create a new building with specified recycled water usage and energy collected
+    function createBuilding(uint256 _recycledWaterUsage, uint256 _energyCollected) public {
+        Building storage newBuilding = buildings[msg.sender];
+        newBuilding.recycledWaterUsage = _recycledWaterUsage;
+        newBuilding.energyCollected = _energyCollected;
+        newBuilding.owner = msg.sender;
+        totalBuildings++;
+        
+        emit BuildingCreated(msg.sender, _recycledWaterUsage, _energyCollected);
+    }
+}
+
